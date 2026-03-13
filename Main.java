@@ -1,4 +1,6 @@
-import java.util.Scanner;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 public class Main {
 
@@ -19,19 +21,24 @@ public class Main {
     }
 
     private long hash(String item) {
-        long h = 1125899906842597L;
-        int len = item.length();
-        for (int i = 0; i < len; i++) {
-            h = 31 * h + item.charAt(i);
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hashBytes = digest.digest(item.getBytes(StandardCharsets.UTF_8));
+            long result = 0;
+            for (int i = 0; i < 8; i++) {
+                result = (result << 8) | (hashBytes[i] & 0xff);
+            }
+            return result;
+        } catch (NoSuchAlgorithmException e) {
+            return (long) item.hashCode() << 32 | (item.hashCode() & 0xFFFFFFFFL);
         }
-        return h;
     }
 
     public void add(String item) {
         long x = hash(item);
         int j = (int) (x >>> (64 - b));
-        long w = (x << b) | (1L << (b - 1));
-        int rho = Long.numberOfLeadingZeros(w) + 1;
+        long w = (x << b);
+        int rho = Long.numberOfLeadingZeros(w | (1L << (b - 1))) + 1;
 
         if (rho > registers[j]) {
             registers[j] = (byte) rho;
@@ -40,7 +47,7 @@ public class Main {
 
     public void merge(Main other) {
         if (this.b != other.b) {
-            throw new IllegalArgumentException("Kova sayıları aynı olmalıdır!");
+            throw new IllegalArgumentException("Kova sayıları eşleşmiyor.");
         }
         for (int i = 0; i < m; i++) {
             this.registers[i] = (byte) Math.max(this.registers[i], other.registers[i]);
@@ -50,7 +57,7 @@ public class Main {
     public long estimate() {
         double sum = 0;
         for (byte r : registers) {
-            sum += Math.pow(2, -r);
+            sum += 1.0 / Math.pow(2.0, (double) r);
         }
 
         double estimate = alphaMM * m * m * (1.0 / sum);
@@ -59,7 +66,7 @@ public class Main {
             int zeroCount = 0;
             for (byte r : registers) if (r == 0) zeroCount++;
             if (zeroCount != 0) {
-                estimate = m * Math.log((double) m / zeroCount);
+                estimate = (double) m * Math.log((double) m / (double) zeroCount);
             }
         }
         return Math.round(estimate);
@@ -69,17 +76,22 @@ public class Main {
         Main hll1 = new Main(10);
         Main hll2 = new Main(10);
 
-        System.out.println("Veriler işleniyor...");
+        System.out.println("Sistem başlatıldı. Veri setleri işleniyor...");
 
-        // İlk set: 0-10000
-        for (int i = 0; i < 10000; i++) hll1.add("user_" + i);
-        // İkinci set: 5000-15000 (kesişim var)
-        for (int i = 5000; i < 15000; i++) hll2.add("user_" + i);
+        for (int i = 0; i < 10000; i++) {
+            hll1.add("user_" + i);
+        }
 
-        System.out.println("HLL 1 Tahmin: " + hll1.estimate());
-        System.out.println("HLL 2 Tahmin: " + hll2.estimate());
+        for (int i = 5000; i < 15000; i++) {
+            hll2.add("user_" + i);
+        }
+
+        System.out.println("HLL 1 Sonucu: " + hll1.estimate());
+        System.out.println("HLL 2 Sonucu: " + hll2.estimate());
 
         hll1.merge(hll2);
-        System.out.println("Birleştirilmiş HLL Tahmini (Beklenen ~15000): " + hll1.estimate());
+
+        System.out.println("Birleştirilmiş Küme Tahmini: " + hll1.estimate());
+        System.out.println("Beklenen Benzersiz Eleman: 15000");
     }
 }
